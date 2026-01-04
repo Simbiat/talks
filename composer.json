@@ -1,0 +1,33 @@
+{
+    "name": "simbiat/talks",
+    "type": "library",
+    "keywords": [
+        "forum",
+        "php",
+        "blog"
+    ],
+    "description": "Forum engine",
+    "homepage": "https://github.com/Simbiat/talks",
+    "license": "AGPL-3.0-or-later",
+    "authors": [
+        {
+            "name": "Dmitrii Kustov",
+            "email": "support@simbiat.eu",
+            "homepage": "https://www.simbiat.eu",
+            "role": "Developer"
+        }
+    ],
+    "require": {
+        "php": "^8.5",
+        "ext-mbstring": "*"
+    },
+    "autoload": {
+        "psr-4": {
+            "Simbiat\\Talks\\": "src/"
+        }
+    },
+    "support": {
+        "issues": "https://github.com/Simbiat/talks/issues",
+        "source": "https://github.com/Simbiat/talks"
+    }
+}
