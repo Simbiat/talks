@@ -12,4 +12,17 @@ enum SystemUsers: int
     case System = 2;
     case Deleted = 3;
     case Owner = 4;
+    
+    /**
+     * Get system users' IDs
+     * @return array
+     */
+    public static function getSystemUsers(): array
+    {
+        return [
+            self::Unknown->value,
+            self::System->value,
+            self::Deleted->value,
+        ];
+    }
 }

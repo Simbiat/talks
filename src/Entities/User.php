@@ -746,7 +746,7 @@ final class User extends Entity
             $pass = \bin2hex(\random_bytes(128));
             $hashed_pass = Security::passHash($pass);
             #Write cookie data to DB
-            if (!($this->id === null || $this->id === '') || (!empty($_SESSION['user_id']) && !in_array($_SESSION['user_id'], [SystemUsers::Unknown->value, SystemUsers::System->value, SystemUsers::Deleted->value], true))) {
+            if (!($this->id === null || $this->id === '') || (!empty($_SESSION['user_id']) && !in_array((int)$_SESSION['user_id'], SystemUsers::getSystemUsers(), true))) {
                 #Check if a cookie exists and get its `validator`. This also helps with race conditions a bit
                 $current_pass = Query::query('SELECT `validator` FROM `uc__cookies` WHERE `user_id`=:id AND `cookie_id`=:cookie',
                     [

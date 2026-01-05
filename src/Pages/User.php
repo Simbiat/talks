@@ -4,6 +4,7 @@ declare(strict_types = 1);
 namespace Simbiat\Talks\Pages;
 
 use Simbiat\http20\Headers;
+use Simbiat\Talks\Enums\SystemUsers;
 use Simbiat\Website\Abstracts\Page;
 use Simbiat\Website\Config;
 
@@ -36,11 +37,13 @@ class User extends Page
         if (empty($output_array['user_data']['id'])) {
             return ['http_error' => 404, 'reason' => 'User does not exist'];
         }
-        #Get FF characters
-        $output_array['fftracker'] = $user->getFF();
-        #Get last posts and threads
-        $output_array['threads'] = $user->getThreads();
-        $output_array['posts'] = $user->getPosts();
+        if (!\in_array((int)$user->id, SystemUsers::getSystemUsers(), true)) {
+            #Get FF characters
+            $output_array['fftracker'] = $user->getFF();
+            #Get last posts and threads
+            $output_array['threads'] = $user->getThreads();
+            $output_array['posts'] = $user->getPosts();
+        }
         #Update meta
         $this->title = $output_array['user_data']['username'];
         $this->h1 = $this->title;
