@@ -12,10 +12,10 @@ class Threads extends Api
     #Flag to indicate, that this is the lowest level
     protected bool $final_node = true;
     #Allowed methods (besides GET, HEAD and OPTIONS) with optional mapping to GET functions
-    protected array $methods = ['POST' => ['add', 'edit'], 'DELETE' => 'delete', 'PATCH' => ['close', 'open', 'markprivate', 'markpublic', 'pin', 'unpin']];
+    protected array $methods = ['POST' => ['add'], 'DELETE' => 'delete', 'PATCH' => ['edit', 'move', 'close', 'open', 'mark_private', 'mark_public', 'pin', 'unpin']];
     #Allowed verbs, that can be added after an ID as an alternative to HTTP Methods or to get alternative representation
-    protected array $verbs = ['add' => 'Add thread', 'delete' => 'Delete thread', 'edit' => 'Edit thread', 'close' => 'Close thread', 'open' => 'Open thread',
-        'markprivate' => 'Mark the thread as private', 'markpublic' => 'Mark the thread as public', 'pin' => 'Pin the thread', 'unpin' => 'Unpin the thread',
+    protected array $verbs = ['add' => 'Add thread', 'delete' => 'Delete thread', 'edit' => 'Edit thread', 'move' => 'Move thread', 'close' => 'Close thread', 'open' => 'Open thread',
+        'mark_private' => 'Mark the thread as private', 'mark_public' => 'Mark the thread as public', 'pin' => 'Pin the thread', 'unpin' => 'Unpin the thread',
     ];
     #Flag indicating that authentication is required
     protected bool $authentication_needed = true;
@@ -26,10 +26,6 @@ class Threads extends Api
     
     protected function genData(array $path): array
     {
-        #Reset verb for consistency if it's not set
-        if (empty($path[1])) {
-            $path[1] = 'add';
-        }
         #Check for ID
         if (empty($path[0])) {
             #Limit accidental spam by extra checks
@@ -53,12 +49,13 @@ class Threads extends Api
             return match ($path[1]) {
                 'edit' => $thread->edit(),
                 'delete' => $thread->delete(),
-                'markprivate' => $thread->setPrivate(true),
-                'markpublic' => $thread->setPrivate(),
+                'mark_private' => $thread->setPrivate(true),
+                'mark_public' => $thread->setPrivate(),
                 'close' => $thread->setClosed(true),
                 'open' => $thread->setClosed(),
                 'pin' => $thread->setPinned(true),
                 'unpin' => $thread->setPinned(),
+                'move' => $thread->move(),
                 default => ['http_error' => 405, 'reason' => 'Unsupported API verb used'],
             };
         }

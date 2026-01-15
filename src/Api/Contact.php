@@ -26,11 +26,11 @@ class Contact extends Api
     protected function genData(array $path): array
     {
         #Only creation of new threads
-        $_POST['new_thread']['parent_id'] = Config::$support_section;
+        $_POST['thread_data']['parent_id'] = Config::$support_section;
         #contact_form_email
         #Generate ticket ID
         $ticket = Security::genToken(8);
-        $_POST['new_thread']['name'] = '[Contact form] '.$ticket;
+        $_POST['thread_data']['name'] = '[Contact form] '.$ticket;
         $_SESSION['permissions'] = ['can_post'];
         return new Thread()->add();
     }

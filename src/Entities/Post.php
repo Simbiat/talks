@@ -9,7 +9,7 @@ use Simbiat\Talks\Enums\SystemUsers;
 use Simbiat\Website\Abstracts\Entity;
 use Simbiat\Website\Entities\Notifications\NewPost;
 use Simbiat\Website\Entities\Notifications\TicketCreation;
-use Simbiat\Website\Entities\Notifications\TicketUpdate;
+use Simbiat\Website\Entities\Notifications\TicketChange;
 use Simbiat\Website\Errors;
 use Simbiat\Website\Sanitization;
 use Simbiat\Website\Search\Posts;
@@ -222,7 +222,7 @@ final class Post extends Entity
             return ['http_error' => 403, 'reason' => 'No `can_post` permission'];
         }
         #Sanitize data
-        $data = $_POST['post_form'] ?? [];
+        $data = $_POST['post_data'] ?? [];
         $sanitize = $this->sanitizeInput($data);
         if (is_array($sanitize)) {
             return $sanitize;
@@ -270,7 +270,7 @@ final class Post extends Entity
                 $thread->author === SystemUsers::Unknown->value
             ) {
                 #If we are here, it means that we need to update ticket's token
-                $this->tokenUpdate($thread->email ?? $_POST['new_thread']['contact_form_email'] ?? null, $first_post);
+                $this->tokenUpdate($thread->email ?? $_POST['thread_data']['contact_form_email'] ?? null, $first_post);
                 if ($thread->author === $_SESSION['user_id'] && $this->access_token !== '' && $this->access_token !== null) {
                     #Post is added by author, so provide new location with new access token
                     $new_location .= ($thread->last_page === 1 ? '?' : '&').'access_token='.$this->access_token;
@@ -281,7 +281,7 @@ final class Post extends Entity
                 $new_location .= '#post_'.$new_id;
             }
             foreach ($thread->subscribers as $subscriber) {
-                new NewPost()->save($subscriber, ['thread_name' => $thread->name, 'location' => $new_location])->send();
+                (void)new NewPost()->save($subscriber, ['thread_name' => $thread->name, 'location' => $new_location]);
             }
             if ($thread->author !== (int)$_SESSION['user_id'] && !in_array((int)$_SESSION['user_id'], $thread->subscribers, true)) {
                 Query::query(
@@ -309,6 +309,14 @@ final class Post extends Entity
      */
     private function tokenUpdate(#[\SensitiveParameter] ?string $email = null, bool $first_post = false): void
     {
+        #Get email linked to the thread, if any, if it was not provided
+        if ($email === null || $email === '') {
+            $email = Query::query('SELECT `email` FROM `talks__contact_form` WHERE `thread_id`=:thread_id;', [':thread_id' => $this->thread_id], return: 'value');
+        }
+        #If email is empty - do not refresh token, because anonymous user without the email will not know, that it changed. If current user is anonymous, then we can refresh it, since they will get URL in UI
+        if ($_SESSION['user_id'] !== SystemUsers::Unknown->value && \preg_match('/^\s*$/u', $email ?? '') === 1) {
+            return;
+        }
         $new_token = Uuid::uuid7()->toString();
         try {
             if ($this->access_token === null) {
@@ -319,18 +327,14 @@ final class Post extends Entity
             #Should be just 1
             if ($affected === 1) {
                 $this->access_token = $new_token;
-                #Get email linked to the thread, if any, if it was not provided
-                if ($email === null || $email === '') {
-                    $email = Query::query('SELECT `email` FROM `talks__contact_form` WHERE `thread_id`=:thread_id;', [':thread_id' => $this->thread_id], return: 'value');
-                }
                 #Send notification
                 if ($email !== null && $email !== '') {
                     $ticket = \preg_replace('/^\[Contact Form]\s*/ui', '', $this->name);
                     $twig_vars = ['ticket' => $ticket, 'token' => $new_token, 'thread_id' => $this->thread_id];
                     if ($first_post) {
-                        new TicketCreation()->save(SystemUsers::Unknown->value, $twig_vars, true, false, $email)->send(true);
+                        (void)new TicketCreation()->save(SystemUsers::Unknown->value, $twig_vars, true, false, $email);
                     } else {
-                        new TicketUpdate()->save(SystemUsers::Unknown->value, $twig_vars, true, false, $email)->send();
+                        (void)new TicketChange()->save(SystemUsers::Unknown->value, $twig_vars, true, false, $email);
                     }
                 }
             }
@@ -428,7 +432,7 @@ final class Post extends Entity
             return ['http_error' => 403, 'reason' => 'Post is locked and no `edit_locked` permission'];
         }
         #Sanitize data
-        $data = $_POST['post_form'] ?? [];
+        $data = $_POST['post_data'] ?? [];
         $sanitize = $this->sanitizeInput($data);
         if (is_array($sanitize)) {
             return $sanitize;

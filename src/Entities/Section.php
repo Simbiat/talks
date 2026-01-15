@@ -3,10 +3,13 @@ declare(strict_types = 1);
 
 namespace Simbiat\Talks\Entities;
 
+use JetBrains\PhpStorm\ExpectedValues;
+use Simbiat\Arrays\Checkers;
 use Simbiat\Database\Query;
 use Simbiat\Talks\Enums\SystemUsers;
 use Simbiat\Website\Abstracts\Entity;
 use Simbiat\Website\Curl;
+use Simbiat\Website\Entities\Notifications\SectionChange;
 use Simbiat\Website\Errors;
 use Simbiat\Website\Sanitization;
 use Simbiat\Website\Search\Sections;
@@ -46,6 +49,7 @@ final class Section extends Entity
     private bool $for_thread = false;
     #List of subscribers
     public array $subscribers = [];
+    public int $sequence = 0;
     
     /**
      * Function to set a flag to return only the data required for a thread (for the sake of optimization)
@@ -268,7 +272,7 @@ final class Section extends Entity
         $parents = [];
         #Get parent of the current ID
         $parents[] = Query::query('SELECT `section_id`, `name`, `talks__types`.`type`, `parent_id`, `author` FROM `talks__sections` LEFT JOIN `talks__types` ON `talks__types`.`type_id`=`talks__sections`.`type` WHERE `section_id`=:section_id;', [':section_id' => [$id, 'int']], return: 'row');
-        if (empty($parents)) {
+        if (\count($parents) === 0) {
             return [];
         }
         #If the parent has its own parent - get it and add to array
@@ -279,6 +283,57 @@ final class Section extends Entity
         }
         #Reverse array to make it from top to bottom
         return $parents;
+    }
+    
+    /**
+     * @param string $type Change type
+     *
+     * @return void
+     */
+    private function notifyAboutChange(#[ExpectedValues(['private', 'public', 'close', 'open', 'change', 'delete', 'move'])] string $type): void
+    {
+        if ($type === 'delete') {
+            $for_notification = [
+                'section_id' => $this->id,
+                'author' => $this->author,
+            ];
+        } else {
+            $for_notification = Query::query('SELECT `section_id`, `author`, `name` AS `new_name`, `description`, `parent_id`,
+                                                        (SELECT `name` FROM `talks__sections` WHERE `section_id`=`main_select`.`parent_id`) AS `parent_name`,
+                                                        (SELECT `type` FROM `talks__types` WHERE `type_id`=`main_select`.`type`) AS `type`,
+                                                        (SELECT CONCAT(\'/assets/images/uploaded/\', SUBSTRING(`file_id`, 1, 2), \'/\', SUBSTRING(`file_id`, 3, 2), \'/\', SUBSTRING(`file_id`, 5, 2), \'/\', `file_id`, \'.\', `extension`) AS `icon` FROM `sys__files` WHERE `file_id`=`main_select`.`icon`) AS `icon`
+                                                        FROM `talks__sections` AS `main_select` WHERE `section_id`=:section_id;',
+                [':section_id' => [$this->id, 'int']], return: 'row'
+            );
+        }
+        $for_notification['reason'] = $_POST['section_data']['change_reason'] ?? '';
+        $for_notification['name'] = $this->name;
+        $for_notification['change_type'] = $type;
+        $for_notification['editor_id'] = $_SESSION['user_id'];
+        $for_notification['editor_name'] = $_SESSION['username'];
+        if ($for_notification['author'] !== $_SESSION['user_id'] && !in_array($for_notification['author'], SystemUsers::getSystemUsers(), true)) {
+            if ($type === 'change') {
+                $for_notification['changes'] = Checkers::getChanges(
+                    [
+                        'name' => $this->name,
+                        'description' => $this->description,
+                        'type' => $this->type,
+                        'icon' => $this->icon,
+                    ],
+                    [
+                        'name' => $for_notification['new_name'],
+                        'description' => $for_notification['description'],
+                        'type' => $for_notification['type'],
+                        'icon' => $for_notification['icon'],
+                    ]
+                );
+                #If no changes added to, skip sending notification, something was changed, that we do not track
+                if ($for_notification['changes'] === []) {
+                    return;
+                }
+            }
+            (void)new SectionChange()->save($for_notification['author'], $for_notification);
+        }
     }
     
     /**
@@ -294,8 +349,18 @@ final class Section extends Entity
             return ['http_error' => 403, 'reason' => 'No `edit_sections` permission'];
         }
         try {
-            Query::query('UPDATE `talks__sections` SET `private`=:private WHERE `section_id`=:section_id;', [':private' => [$private, 'int'], ':section_id' => [$this->id, 'int']]);
-            $this->private = $private;
+            $affected = Query::query('UPDATE `talks__sections` SET `private`=:private, `editor`=:user_id WHERE `section_id`=:section_id;',
+                [
+                    ':private' => [$private, 'bool'],
+                    ':section_id' => [$this->id, 'int'],
+                    ':user_id' => [$_SESSION['user_id'], 'int'],
+                ],
+                return: 'affected'
+            );
+            if ($affected > 0) {
+                $this->private = $private;
+                $this->notifyAboutChange($private ? 'private' : 'public');
+            }
             return ['response' => true];
         } catch (\Throwable) {
             return ['response' => false];
@@ -306,7 +371,7 @@ final class Section extends Entity
      * Function to close/open a section
      * @param bool $closed
      *
-     * @return array|false[]|true[]
+     * @return array
      */
     public function setClosed(bool $closed = false): array
     {
@@ -315,8 +380,18 @@ final class Section extends Entity
             return ['http_error' => 403, 'reason' => 'No `edit_sections` permission'];
         }
         try {
-            Query::query('UPDATE `talks__sections` SET `closed`=:closed WHERE `section_id`=:section_id;', [':closed' => [($closed ? 'now' : null), ($closed ? 'datetime' : 'null')], ':section_id' => [$this->id, 'int']]);
-            $this->closed = ($closed ? \time() : null);
+            $affected = Query::query('UPDATE `talks__sections` SET `closed`=:closed, `editor`=:user_id WHERE `section_id`=:section_id;',
+                [
+                    ':closed' => [($closed ? 'now' : null), ($closed ? 'datetime' : 'null')],
+                    ':section_id' => [$this->id, 'int'],
+                    ':user_id' => [$_SESSION['user_id'], 'int'],
+                ],
+                return: 'affected'
+            );
+            if ($affected > 0) {
+                $this->closed = ($closed ? \time() : null);
+                $this->notifyAboutChange($closed ? 'close' : 'open');
+            }
             return ['response' => true];
         } catch (\Throwable) {
             return ['response' => false];
@@ -324,33 +399,56 @@ final class Section extends Entity
     }
     
     /**
-     * Function to change the order (sequence) of a section
-     * @return array|false[]
+     * Move section to another parent section
+     * @return array
      */
-    public function order(): array
+    public function move(): array
     {
         #Check permission
-        if (!in_array('edit_sections', $_SESSION['permissions'], true)) {
-            return ['http_error' => 403, 'reason' => 'No `edit_sections` permission'];
+        if (!in_array('move_sections', $_SESSION['permissions'], true)) {
+            return ['http_error' => 403, 'reason' => 'No `move_sections` permission'];
         }
-        #Check value
-        if (!isset($_POST['order'])) {
-            return ['http_error' => 400, 'reason' => 'No order provided'];
+        $data = $_POST['section_data'] ?? [];
+        if (empty($data['parent_id'])) {
+            $data['parent_id'] = null;
+        } elseif (\is_numeric($data['parent_id'])) {
+            $data['parent_id'] = (int)$data['parent_id'];
+            if ($data['parent_id'] < 0) {
+                return ['http_error' => 400, 'reason' => 'Negative parent ID provided'];
+            }
         }
-        if (!\is_numeric($_POST['order'])) {
-            return ['http_error' => 400, 'reason' => 'Order `'.$_POST['order'].'` is not a number'];
+        if ($data['parent_id'] === null) {
+            return ['http_error' => 400, 'reason' => 'Parent ID is required'];
         }
-        #Ensure it's an integer
-        $_POST['order'] = (int)$_POST['order'];
-        if ($_POST['order'] < 0 || $_POST['order'] > 99) {
-            return ['http_error' => 400, 'reason' => 'Order value needs to be between 0 and 99 inclusively'];
+        #Check if parent exists
+        if ($data['parent_id'] === 0 || mb_strtolower($data['parent_id'], 'UTF-8') === 'top') {
+            $data['parent_id'] = null;
+        } else {
+            $parent = new Section($data['parent_id'])->get();
+            if ($parent->id === null) {
+                return ['http_error' => 400, 'reason' => 'Parent section with ID `'.$data['parent_id'].'` does not exist'];
+            }
         }
         try {
-            $result = Query::query('UPDATE `talks__sections` SET `sequence`=:sequence WHERE `section_id`=:section_id;', [':sequence' => [$_POST['order'], 'int'], ':section_id' => [$this->id, 'int']]);
+            $affected = Query::query(
+                'UPDATE `talks__sections` SET `parent_id`=:parent_id, `editor`=:user_id WHERE `section_id`=:section_id;',
+                [
+                    ':section_id' => [$this->id, 'int'],
+                    ':parent_id' => [
+                        (empty($data['parent_id']) ? null : $data['parent_id']),
+                        (empty($data['parent_id']) ? 'null' : 'int')
+                    ],
+                    ':user_id' => [$_SESSION['user_id'], 'int'],
+                ],
+                return: 'affected'
+            );
+            if ($affected > 0) {
+                $this->notifyAboutChange('move');
+            }
+            return ['response' => true];
         } catch (\Throwable) {
-            $result = false;
+            return ['response' => false];
         }
-        return ['response' => $result];
     }
     
     /**
@@ -360,7 +458,7 @@ final class Section extends Entity
     public function add(): array
     {
         #Sanitize data
-        $data = $_POST['new_section'] ?? [];
+        $data = $_POST['section_data'] ?? [];
         $sanitize = $this->sanitizeInput($data);
         if (is_array($sanitize)) {
             return $sanitize;
@@ -436,7 +534,7 @@ final class Section extends Entity
     public function edit(): array
     {
         #Sanitize data
-        $data = $_POST['cur_section'] ?? [];
+        $data = $_POST['section_data'] ?? [];
         $sanitize = $this->sanitizeInput($data, true);
         if (is_array($sanitize)) {
             return $sanitize;
@@ -448,22 +546,13 @@ final class Section extends Entity
         try {
             $queries = [];
             $queries[] = [
-                'UPDATE `talks__sections` SET `name`=:name, `description`=:description, `parent_id`=:parent_id, `sequence`=:sequence, `type`=:type, `closed`=:closed, `private`=:private, `editor`=:user_id, `icon`=COALESCE(:icon, `icon`) WHERE `section_id`=:section_id;',
+                'UPDATE `talks__sections` SET `name`=:name, `description`=:description, `sequence`=:sequence, `type`=:type, `editor`=:user_id, `icon`=COALESCE(:icon, `icon`) WHERE `section_id`=:section_id;',
                 [
                     ':section_id' => [$this->id, 'int'],
                     ':name' => mb_trim($data['name'], null, 'UTF-8'),
                     ':description' => mb_trim($data['description'], null, 'UTF-8'),
-                    ':parent_id' => [
-                        (empty($data['parent_id']) ? null : $data['parent_id']),
-                        (empty($data['parent_id']) ? 'null' : 'int')
-                    ],
                     ':sequence' => [$data['order'], 'int'],
                     ':type' => [$data['type'], 'int'],
-                    ':closed' => [
-                        ($data['closed'] ? 'now' : null),
-                        ($data['closed'] ? 'datetime' : 'null')
-                    ],
-                    ':private' => [$data['private'], 'bool'],
                     ':user_id' => [$_SESSION['user_id'], 'int'],
                     ':icon' => [
                         (empty($data['icon']) ? null : $data['icon']),
@@ -471,16 +560,10 @@ final class Section extends Entity
                     ],
                 ]
             ];
-            #Nullify the icon if the `clear_icon` flag was set
-            if ($data['clear_icon']) {
-                $queries[] = [
-                    'UPDATE `talks__sections` SET `icon`=NULL, `updated`=`updated` WHERE `section_id`=:section_id;',
-                    [
-                        ':section_id' => [$this->id, 'int'],
-                    ]
-                ];
+            $affected = Query::query($queries, return: 'affected');
+            if ($affected > 0) {
+                $this->notifyAboutChange('change');
             }
-            Query::query($queries);
             return ['response' => true];
         } catch (\Throwable $throwable) {
             Errors::error_log($throwable);
@@ -497,15 +580,18 @@ final class Section extends Entity
      */
     private function sanitizeInput(array &$data, bool $edit = false): bool|array
     {
-        if (empty($data)) {
+        if (\count($data) === 0) {
             return ['http_error' => 400, 'reason' => 'No form data provided'];
         }
+        $data['closed'] = $data['closed'] ?? $this->closed;
         $data['closed'] = Sanitization::checkboxToBoolean($data['closed']);
+        $data['private'] = $data['private'] ?? $this->private;
         $data['private'] = Sanitization::checkboxToBoolean($data['private']);
         $data['clear_icon'] = Sanitization::checkboxToBoolean($data['clear_icon']);
         $data['icon'] = !(mb_strtolower($data['icon'], 'UTF-8') === 'false');
         $data['type'] = (int)$data['type'];
-        $data['order'] = (int)$data['order'];
+        $data['order'] = $data['order'] ?? $this->sequence;
+        $data['order'] = (int)($data['order'] ?? 0);
         if ($data['order'] < 0) {
             $data['order'] = 0;
         } elseif ($data['order'] > 99) {
@@ -515,9 +601,11 @@ final class Section extends Entity
             $data['parent_id'] = null;
         } elseif (\is_numeric($data['parent_id'])) {
             $data['parent_id'] = (int)$data['parent_id'];
-        } else {
-            return ['http_error' => 400, 'reason' => 'Parent ID `'.$data['parent_id'].'` is not numeric'];
+            if ($data['parent_id'] < 0) {
+                $data['parent_id'] = null;
+            }
         }
+        $data['parent_id'] = $data['parent_id'] ?? $this->parent_id;
         #If time was set, convert to UTC
         $data['time'] = Sanitization::scheduledTime($data['time'], $data['timezone']);
         #Strip tags from description, since we do not allow HTML here
@@ -554,7 +642,7 @@ final class Section extends Entity
                     return ['http_error' => 400, 'reason' => 'Blogs can only be created inside root `Blogs` section'];
                 }
                 #Empty $this->name implies creation of a new section
-                if (empty($this->name)) {
+                if (\preg_match('/^\s*$/u', $this->name) === 1) {
                     if (!empty($_SESSION['sections']['blog'])) {
                         return ['http_error' => 400, 'reason' => 'User already has a personal blog'];
                     }
@@ -571,7 +659,7 @@ final class Section extends Entity
                     return ['http_error' => 400, 'reason' => 'Changelogs can only be created inside root `Changelogs` section or its subsections'];
                 }
                 #Empty $this->name implies creation of a new section
-                if (empty($this->name) && $data['parent_id'] === 3) {
+                if ($data['parent_id'] === 3 && \preg_match('/^\s*$/u', $this->name) === 1) {
                     if (!empty($_SESSION['sections']['changelog'])) {
                         return ['http_error' => 400, 'reason' => 'User already has a personal changelog'];
                     }
@@ -588,7 +676,7 @@ final class Section extends Entity
                     return ['http_error' => 400, 'reason' => 'Knowledgebases can only be created inside root `Knowledgebases` section or its subsections'];
                 }
                 #Empty $this->name implies creation of a new section
-                if (empty($this->name) && $data['parent_id'] === 4) {
+                if ($data['parent_id'] === 4 && \preg_match('/^\s*$/u', $this->name) === 1) {
                     if (!empty($_SESSION['sections']['knowledgebase'])) {
                         return ['http_error' => 400, 'reason' => 'User already has a personal knowledgebase'];
                     }
@@ -603,13 +691,13 @@ final class Section extends Entity
         #Check if the name is duplicated
         $section_exists = Query::query('SELECT `section_id` FROM `talks__sections` WHERE `parent_id`=:section_id AND `name`=:name;', [':name' => $data['name'], ':section_id' => [$data['parent_id'], 'int']], return: 'value');
         if (
+            \is_int($section_exists) &&
             (
                 #If the name is empty (a new section is being created)
-                empty($this->name) ||
+                \preg_match('/^\s*$/u', $this->name) === 1 ||
                 #Or it's not empty and is different from the one we are trying to set
                 $this->name !== $data['name']
-            ) &&
-            \is_int($section_exists)
+            )
         ) {
             return ['http_error' => 409, 'reason' => 'Subsection `'.$data['name'].'` already exists in section.', 'location' => '/talks/sections/'.$section_exists];
         }
@@ -618,7 +706,7 @@ final class Section extends Entity
             return ['http_error' => 400, 'reason' => 'Unknown section type ID `'.$data['type'].'`'];
         }
         #Check if the image for the icon was sent and try to process it, unless `clear_icon` is set
-        if ($data['icon'] && !$data['clear_icon']) {
+        if ($data['icon']) {
             #Attempt to upload the image
             $upload = new Curl()->upload(only_images: true);
             if (!empty($upload['http_error'])) {
@@ -627,6 +715,10 @@ final class Section extends Entity
             $data['icon'] = $upload['hash'];
         } else {
             $data['icon'] = null;
+        }
+        #If icon is null, get the default from the type
+        if ($data['icon'] === null || $data['clear_icon']) {
+            $data['icon'] = Query::query('SELECT `icon` FROM `talks__types` WHERE `type_id`=:type;', [':type' => [$data['type'], 'int']], return: 'value');
         }
         return true;
     }
@@ -639,7 +731,7 @@ final class Section extends Entity
     {
         #Deletion is critical, so ensure that we get the actual data, even if this function is somehow called outside API
         if (!$this->attempted) {
-            $this->get();
+            (void)$this->get();
         }
         #Check permission
         if (!$this->owned && !in_array('remove_sections', $_SESSION['permissions'], true)) {
@@ -657,14 +749,17 @@ final class Section extends Entity
             return ['http_error' => 400, 'reason' => 'Can\'t delete non-empty section'];
         }
         #Set location for successful removal
-        if (!empty($this->parent_id)) {
-            $location = '/talks/edit/sections/'.$this->parent_id.'/';
-        } else {
+        if ($this->parent_id === 0) {
             $location = '/talks/edit/sections/';
+        } else {
+            $location = '/talks/edit/sections/'.$this->parent_id.'/';
         }
         #Attempt removal
         try {
-            Query::query('DELETE FROM `talks__sections` WHERE `section_id`=:section_id;', [':section_id' => [$this->id, 'int']]);
+            $affected = Query::query('DELETE FROM `talks__sections` WHERE `section_id`=:section_id;', [':section_id' => [$this->id, 'int']], return: 'affected');
+            if ($affected > 0) {
+                $this->notifyAboutChange('delete');
+            }
             return ['response' => true, 'location' => $location];
         } catch (\Throwable $throwable) {
             Errors::error_log($throwable);
