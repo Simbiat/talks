@@ -281,7 +281,9 @@ final class Post extends Entity
                 $new_location .= '#post_'.$new_id;
             }
             foreach ($thread->subscribers as $subscriber) {
-                (void)new NewPost()->save($subscriber, ['thread_name' => $thread->name, 'location' => $new_location]);
+                if ($subscriber !== $_SESSION['user_id']) {
+                    (void)new NewPost()->save($subscriber, ['thread_name' => $thread->name, 'location' => $new_location]);
+                }
             }
             if ($thread->author !== (int)$_SESSION['user_id'] && !in_array((int)$_SESSION['user_id'], $thread->subscribers, true)) {
                 Query::query(

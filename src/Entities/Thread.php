@@ -106,7 +106,7 @@ final class Thread extends Entity
             }
         } else {
             #Get subscribers
-            $data['subscribers'] = Query::query('SELECT `user_id` FROM `subs__threads` WHERE `thread_id`=:thread_id AND `user_id`<>:user_id;', [':thread_id' => [$this->id, 'int'], 'user_id' => [$data['author'], 'int']], return: 'column');
+            $data['subscribers'] = Query::query('SELECT `user_id` FROM `subs__threads` WHERE `thread_id`=:thread_id;', [':thread_id' => [$this->id, 'int']], return: 'column');
             #Get posts
             $data['posts'] = new Posts([':thread_id' => [$this->id, 'int'], ':user_id' => [$_SESSION['user_id'], 'int']], '`talks__posts`.`thread_id`=:thread_id'.(in_array('view_scheduled', $_SESSION['permissions'], true) ? '' : ' AND `talks__posts`.`created`<=CURRENT_TIMESTAMP(6)'), '`talks__posts`.`created` ASC')->listEntities($page);
             /** @noinspection OffsetOperationsInspection https://github.com/kalessil/phpinspectionsea/issues/1941 */
