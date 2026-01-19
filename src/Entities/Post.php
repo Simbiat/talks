@@ -3,11 +3,13 @@ declare(strict_types = 1);
 
 namespace Simbiat\Talks\Entities;
 
+use JetBrains\PhpStorm\ExpectedValues;
 use Ramsey\Uuid\Uuid;
 use Simbiat\Database\Query;
 use Simbiat\Talks\Enums\SystemUsers;
 use Simbiat\Website\Abstracts\Entity;
 use Simbiat\Website\Entities\Notifications\NewPost;
+use Simbiat\Website\Entities\Notifications\PostChange;
 use Simbiat\Website\Entities\Notifications\TicketCreation;
 use Simbiat\Website\Entities\Notifications\TicketChange;
 use Simbiat\Website\Errors;
@@ -142,15 +144,19 @@ final class Post extends Entity
     
     /**
      * Get post's history only if the respective permission is available. Text is retrieved only for a specific version if it exists
-     * @param int $time
+     * @param float $time
      *
      * @return array
      */
-    public function getHistory(int $time = 0): array
+    public function getHistory(float $time = 0): array
     {
         try {
             if (in_array('view_posts_history', $_SESSION['permissions'], true)) {
-                $data = Query::query('SELECT UNIX_TIMESTAMP(`time`) as `time`, IF(`time`=:time, `text`, null) as `text` FROM `talks__posts_history` WHERE `post_id`=:post_id ORDER BY `time` DESC;', [':post_id' => [$this->id, 'int'], ':time' => [$time, 'datetime']], return: 'pair');
+                if ($time > 0) {
+                    $data = Query::query('SELECT UNIX_TIMESTAMP(`time`) AS `time`, `text` FROM `talks__posts_history` WHERE `post_id`=:post_id AND `time`=:time LIMIT 1;', [':post_id' => [$this->id, 'int'], ':time' => [$time, 'datetime']], return: 'row');
+                } else {
+                    $data = Query::query('SELECT UNIX_TIMESTAMP(`time`) AS `time`, `text` FROM `talks__posts_history` WHERE `post_id`=:post_id AND `text`!=(SELECT `text` FROM `talks__posts` WHERE `post_id`=:post_id) ORDER BY `time` DESC;', [':post_id' => [$this->id, 'int']], return: 'pair');
+                }
             } else {
                 $data = [];
             }
@@ -162,6 +168,35 @@ final class Post extends Entity
             return [];
         }
         return $data;
+    }
+    
+    /**
+     * @param string $type Change type
+     *
+     * @return void
+     */
+    private function notifyAboutChange(#[ExpectedValues(['change', 'delete', 'move'])] string $type): void
+    {
+        if ($type === 'delete') {
+            $for_notification = [
+                'post_id' => $this->id,
+                'author' => $this->author,
+                'parent_name' => Query::query('SELECT `name` FROM `talks__threads` WHERE `thread_id`=:thread_id', [':thread_id' => $this->thread_id], return: 'value'),
+            ];
+        } else {
+            $for_notification = Query::query('SELECT `post_id`, `author`, `thread_id`,
+                                                        (SELECT `name` FROM `talks__threads` WHERE `thread_id`=`main_select`.`thread_id`) AS `parent_name`
+                                                        FROM `talks__posts` AS `main_select` WHERE `post_id`=:post_id;',
+                [':post_id' => [$this->id, 'int']], return: 'row'
+            );
+        }
+        $for_notification['reason'] = $_POST['post_data']['change_reason'] ?? '';
+        $for_notification['change_type'] = $type;
+        $for_notification['editor_id'] = $_SESSION['user_id'];
+        $for_notification['editor_name'] = $_SESSION['username'];
+        if ($for_notification['author'] !== $_SESSION['user_id'] && !in_array($for_notification['author'], SystemUsers::getSystemUsers(), true)) {
+            (void)new PostChange()->save($for_notification['author'], $for_notification)->send();
+        }
     }
     
     /**
@@ -453,11 +488,10 @@ final class Post extends Entity
             $queries = [];
             #Update text
             $queries[] = [
-                'UPDATE `talks__posts` SET `thread_id`=:thread_id,`editor`=:user_id,`text`=:text, `updated`=GREATEST(`created`, `updated`) WHERE `post_id`=:post_id;',
+                'UPDATE `talks__posts` SET `editor`=:user_id,`text`=:text, `updated`=GREATEST(`created`, `updated`) WHERE `post_id`=:post_id;',
                 [
                     ':post_id' => [$this->id, 'int'],
                     ':user_id' => [$_SESSION['user_id'], 'int'],
-                    ':thread_id' => $data['thread_id'],
                     ':text' => $data['text'],
                 ]
             ];
@@ -471,11 +505,15 @@ final class Post extends Entity
                 ];
             }
             #Run queries
-            Query::query($queries);
+            $affected = Query::query($queries);
             #Add text to history
             $this->addHistory($data['text']);
             #Link attachments
             $this->attach([], $data['inline_files']);
+            if ($affected > 0) {
+                $this->notifyAboutChange('change');
+                
+            }
             return $success;
         } catch (\Throwable $throwable) {
             Errors::error_log($throwable);
@@ -625,7 +663,11 @@ final class Post extends Entity
                     [':thread_id' => [$this->thread_id, 'int']]
                 ],
             ];
-            Query::query($queries);
+            $affected = Query::query($queries);
+            if ($affected > 0) {
+                $this->notifyAboutChange('delete');
+                
+            }
             return ['response' => true, 'location' => $location];
         } catch (\Throwable $throwable) {
             Errors::error_log($throwable);

@@ -221,6 +221,7 @@ final class Thread extends Entity
         }
         $for_notification['reason'] = $_POST['thread_data']['change_reason'] ?? '';
         $for_notification['name'] = $this->name;
+        $for_notification['change_type'] = $type;
         $for_notification['editor_id'] = $_SESSION['user_id'];
         $for_notification['editor_name'] = $_SESSION['username'];
         if ($for_notification['author'] !== $_SESSION['user_id'] && !in_array($for_notification['author'], SystemUsers::getSystemUsers(), true)) {

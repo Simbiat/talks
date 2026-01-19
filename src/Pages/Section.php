@@ -24,8 +24,6 @@ class Section extends Page
     protected string $og_desc = 'Talks: forums, blogs and other ways of communication';
     #List of permissions, from which at least 1 is required to have access to the page
     protected array $required_permission = ['view_posts'];
-    #Flag to indicate editor mode
-    protected bool $edit_mode = false;
     #Link to JS module for preload
     protected string $js_module = 'talks/sections';
     
@@ -97,8 +95,6 @@ class Section extends Page
             $this->title = $this->h1;
             $this->og_desc = $output_array['description'] ?? ($output_array['type'].' with the name of `'.$output_array['name'].'`');
         }
-        #Set flag indicating that we are in edit mode
-        $output_array['edit_mode'] = $this->edit_mode;
         #Get section types
         if ($output_array['owned'] || in_array('add_sections', $_SESSION['permissions'], true)) {
             $output_array['section_types'] = \Simbiat\Talks\Entities\Section::getSectionTypes($output_array['inherited_type']);
@@ -107,12 +103,6 @@ class Section extends Page
         if ($output_array['owned'] || in_array('can_post', $_SESSION['permissions'], true)) {
             $output_array['thread_languages'] = \Simbiat\Talks\Entities\Thread::getLanguages();
             $output_array['thread_link_types'] = \Simbiat\Talks\Entities\Thread::getAltLinkTypes();
-        }
-        if ($this->edit_mode) {
-            #Add edit mode to breadcrumb
-            $this->breadcrumb[] = ['href' => '/talks/edit/sections/'.($id !== 'top' ? $id : ''), 'name' => 'Edit mode'];
-            $this->h1 = 'Editing `'.($id !== 'top' ? $output_array['name'] : 'Root section').'`'.($page > 1 ? ', Page '.$page : '');
-            $this->title = $this->h1;
         }
         return $output_array;
     }

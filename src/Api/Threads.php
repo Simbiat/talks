@@ -29,35 +29,34 @@ class Threads extends Api
         #Check for ID
         if (empty($path[0])) {
             #Limit accidental spam by extra checks
-            if (HomePage::$method !== 'POST' && $path[1] === 'add') {
+            if (HomePage::$method !== 'POST') {
                 return ['http_error' => 405, 'reason' => 'Incorrect method or verb used'];
             }
             #Only support adding a new post here
             return new Thread()->add();
-        } else {
-            if (!\is_numeric($path[0])) {
-                return ['http_error' => 400, 'reason' => 'ID `'.$path[0].'` is not numeric'];
-            }
-            #If we are not adding a thread (which can take some time with writing up a post) - check CSRF token
-            if (!$this->antiCSRF($this->allowed_origins)) {
-                return ['http_error' => 403, 'reason' => 'CSRF validation failed, possibly due to expired session. Please, try to reload the page.'];
-            }
-            $thread = new Thread($path[0])->get();
-            if ($thread->id === null) {
-                return ['http_error' => 404, 'reason' => 'ID `'.$path[0].'` not found'];
-            }
-            return match ($path[1]) {
-                'edit' => $thread->edit(),
-                'delete' => $thread->delete(),
-                'mark_private' => $thread->setPrivate(true),
-                'mark_public' => $thread->setPrivate(),
-                'close' => $thread->setClosed(true),
-                'open' => $thread->setClosed(),
-                'pin' => $thread->setPinned(true),
-                'unpin' => $thread->setPinned(),
-                'move' => $thread->move(),
-                default => ['http_error' => 405, 'reason' => 'Unsupported API verb used'],
-            };
         }
+        if (!\is_numeric($path[0])) {
+            return ['http_error' => 400, 'reason' => 'ID `'.$path[0].'` is not numeric'];
+        }
+        #If we are not adding a thread (which can take some time with writing up a post) - check CSRF token
+        if (!$this->antiCSRF($this->allowed_origins)) {
+            return ['http_error' => 403, 'reason' => 'CSRF validation failed, possibly due to expired session. Please, try to reload the page.'];
+        }
+        $thread = new Thread($path[0])->get();
+        if ($thread->id === null) {
+            return ['http_error' => 404, 'reason' => 'ID `'.$path[0].'` not found'];
+        }
+        return match ($path[1]) {
+            'edit' => $thread->edit(),
+            'delete' => $thread->delete(),
+            'mark_private' => $thread->setPrivate(true),
+            'mark_public' => $thread->setPrivate(),
+            'close' => $thread->setClosed(true),
+            'open' => $thread->setClosed(),
+            'pin' => $thread->setPinned(true),
+            'unpin' => $thread->setPinned(),
+            'move' => $thread->move(),
+            default => ['http_error' => 405, 'reason' => 'Unsupported API verb used'],
+        };
     }
 }
