@@ -139,10 +139,12 @@ class Cron
      */
     public function closeInactiveTickets(): bool
     {
+        #Give temporary permissions to the system user
+        $_SESSION['permissions'] = ['close_own_threads', 'close_others_threads'];
         $tickets = Query::query('SELECT `thread_id` FROM `talks__threads` LEFT JOIN `talks__sections` ON `talks__threads`.`section_id`=`talks__sections`.`section_id` WHERE `type`=:type AND `last_post` <= DATE_SUB(CURRENT_TIMESTAMP(6), INTERVAL 1 MONTH);', [':type' => TalkTypes::Support->value], return: 'column');
         foreach ($tickets as $ticket) {
             try {
-                (void)new Thread($ticket['thread_id'])->setClosed(true);
+                (void)new Thread($ticket)->setClosed(true);
             } catch (\Throwable $throwable) {
                 Errors::error_log($throwable);
             }
