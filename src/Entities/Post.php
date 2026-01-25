@@ -244,6 +244,51 @@ final class Post extends Entity
     }
     
     /**
+     * Move thread to another section
+     * @return array
+     */
+    public function move(): array
+    {
+        #Check permission
+        if (!in_array('move_posts', $_SESSION['permissions'], true)) {
+            return ['http_error' => 403, 'reason' => 'No `move_posts` permission'];
+        }
+        $data = $_POST['post_data'] ?? [];
+        if (empty($data['thread_id'])) {
+            return ['http_error' => 400, 'reason' => 'No thread ID provided'];
+        }
+        if (\is_numeric($data['thread_id'])) {
+            $data['thread_id'] = (int)$data['thread_id'];
+        } else {
+            return ['http_error' => 400, 'reason' => 'Parent ID `'.$data['thread_id'].'` is not numeric'];
+        }
+        #Check if parent exists
+        $parent = new Thread($data['thread_id'])->setForPost(true)->get();
+        if ($parent->id === null) {
+            return ['http_error' => 400, 'reason' => 'Thread with ID `'.$data['thread_id'].'` does not exist'];
+        }
+        try {
+            $affected = Query::query(
+                'UPDATE `talks__posts` SET `thread_id`=:thread_id, `updated`=`updated` WHERE `post_id`=:post_id;',
+                [
+                    ':post_id' => [$this->id, 'int'],
+                    ':thread_id' => [
+                        (empty($data['thread_id']) ? null : $data['thread_id']),
+                        (empty($data['thread_id']) ? 'null' : 'int')
+                    ],
+                ],
+                return: 'affected'
+            );
+            if ($affected > 0) {
+                $this->notifyAboutChange('move');
+            }
+            return ['response' => true];
+        } catch (\Throwable) {
+            return ['response' => false];
+        }
+    }
+    
+    /**
      * Add post
      *
      * @param bool $first_post Whether this is first post in thread
