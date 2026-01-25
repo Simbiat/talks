@@ -410,24 +410,11 @@ final class Section extends Entity
         }
         $data = $_POST['section_data'] ?? [];
         if (empty($data['parent_id'])) {
-            $data['parent_id'] = null;
-        } elseif (\is_numeric($data['parent_id'])) {
-            $data['parent_id'] = (int)$data['parent_id'];
-            if ($data['parent_id'] < 0) {
-                return ['http_error' => 400, 'reason' => 'Negative parent ID provided'];
-            }
+            return ['http_error' => 400, 'reason' => 'No section ID provided'];
         }
-        if ($data['parent_id'] === null) {
-            return ['http_error' => 400, 'reason' => 'Parent ID is required'];
-        }
-        #Check if parent exists
-        if ($data['parent_id'] === 0 || mb_strtolower($data['parent_id'], 'UTF-8') === 'top') {
-            $data['parent_id'] = null;
-        } else {
-            $parent = new Section($data['parent_id'])->get();
-            if ($parent->id === null) {
-                return ['http_error' => 400, 'reason' => 'Parent section with ID `'.$data['parent_id'].'` does not exist'];
-            }
+        $parent = new Section($data['parent_id'])->get();
+        if ($parent->id === null) {
+            return ['http_error' => 400, 'reason' => 'Parent section with ID `'.$data['parent_id'].'` does not exist'];
         }
         try {
             $affected = Query::query(
