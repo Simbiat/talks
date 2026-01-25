@@ -26,7 +26,7 @@ class Contact extends Api
     protected function genData(array $path): array
     {
         #Only creation of new threads
-        $_POST['thread_data']['parent_id'] = Config::$support_section;
+        $_POST['thread_data']['parent_id'] = Config::SUPPORT_SECTION;
         #contact_form_email
         #Generate ticket ID
         $ticket = Security::genToken(8);
