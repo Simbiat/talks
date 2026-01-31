@@ -272,14 +272,13 @@ final class Post extends Entity
                 'UPDATE `talks__posts` SET `thread_id`=:thread_id, `updated`=`updated` WHERE `post_id`=:post_id;',
                 [
                     ':post_id' => [$this->id, 'int'],
-                    ':thread_id' => [
-                        (empty($data['thread_id']) ? null : $data['thread_id']),
-                        (empty($data['thread_id']) ? 'null' : 'int')
-                    ],
+                    ':thread_id' => [$data['thread_id'], 'int'],
                 ],
                 return: 'affected'
             );
             if ($affected > 0) {
+                new Thread($this->thread_id)->updateStats();
+                new Thread($data['thread_id'])->updateStats();
                 $this->notifyAboutChange('move');
             }
             return ['response' => true];
@@ -550,7 +549,7 @@ final class Post extends Entity
                 ];
             }
             #Run queries
-            $affected = Query::query($queries);
+            $affected = Query::query($queries, return: 'affected');
             #Add text to history
             $this->addHistory($data['text']);
             #Link attachments
@@ -698,18 +697,13 @@ final class Post extends Entity
         }
         #Attempt removal. We also need to update thread details
         try {
-            $queries = [
-                [
-                    'DELETE FROM `talks__posts` WHERE `post_id`=:post_id;',
-                    [':post_id' => [$this->id, 'int']]
-                ],
-                [
-                    'UPDATE `talks__threads` SET `updated`=`updated`, `last_post`=(SELECT `created` FROM `talks__posts` WHERE `thread_id`=:thread_id ORDER BY `created` DESC LIMIT 1), `posts`=`posts`-1, `last_poster`=(SELECT `author` FROM `talks__posts` WHERE `thread_id`=:thread_id ORDER BY `created` DESC LIMIT 1) WHERE `thread_id`=:thread_id;',
-                    [':thread_id' => [$this->thread_id, 'int']]
-                ],
-            ];
-            $affected = Query::query($queries);
+            $affected = Query::query(
+                'DELETE FROM `talks__posts` WHERE `post_id`=:post_id;',
+                [':post_id' => [$this->id, 'int']],
+                return: 'affected'
+            );
             if ($affected > 0) {
+                new Thread($this->thread_id)->updateStats();
                 $this->notifyAboutChange('delete');
                 
             }

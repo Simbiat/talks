@@ -531,6 +531,30 @@ final class Thread extends Entity
     }
     
     /**
+     * Update thread's posts stats
+     * @return void
+     */
+    public function updateStats(): void
+    {
+        if ($this->id === null) {
+            return;
+        }
+        Query::query(
+            'UPDATE `talks__threads` AS `threads`
+                    LEFT JOIN (
+                        SELECT `thread_id`, COUNT(*) OVER () AS `count`, `created`, `author` FROM `talks__posts` WHERE `thread_id`=:thread_id ORDER BY `created` DESC LIMIT 1
+                    ) AS `posts` ON `threads`.`thread_id` = `posts`.`thread_id`
+                    SET
+                        `updated`=`updated`,
+                        `threads`.`posts` = `posts`.`count`,
+                        `threads`.`last_post` = COALESCE(`posts`.`created`, `threads`.`created`),
+                        `threads`.`last_poster` = COALESCE(`posts`.`author`, `threads`.`author`)
+                    WHERE `threads`.`thread_id` = :thread_id;',
+            [':thread_id' => [$this->id, 'int']]
+        );
+    }
+    
+    /**
      * Edit section data
      * @return array|true[]
      */
