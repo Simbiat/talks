@@ -11,7 +11,6 @@ use Simbiat\Talks\Enums\SystemUsers;
 use Simbiat\Website\Abstracts\Entity;
 use Simbiat\Website\Curl;
 use Simbiat\Website\Entities\Notifications\NewThread;
-use Simbiat\Website\Entities\Notifications\SectionChange;
 use Simbiat\Website\Entities\Notifications\ThreadChange;
 use Simbiat\Website\Errors;
 use Simbiat\Website\Images;
@@ -267,14 +266,14 @@ final class Thread extends Entity
         try {
             $affected = Query::query('UPDATE `talks__threads` SET `private`=:private, `editor`=:user_id WHERE `thread_id`=:thread_id;',
                 [
-                    ':private' => [$private, 'int'],
+                    ':private' => [$private, 'bool'],
                     ':thread_id' => [$this->id, 'int'],
                     ':user_id' => [$_SESSION['user_id'], 'int'],
                 ],
                 return: 'affected'
             );
-            $this->private = $private;
             if ($affected > 0) {
+                $this->private = $private;
                 $this->notifyAboutChange($private ? 'private' : 'public');
                 
             }
@@ -384,7 +383,7 @@ final class Thread extends Entity
         try {
             $affected = Query::query('UPDATE `talks__threads` SET `pinned`=:pinned, `editor`=:user_id WHERE `thread_id`=:thread_id;',
                 [
-                    ':pinned' => [$pinned, 'int'],
+                    ':pinned' => [$pinned, 'bool'],
                     ':thread_id' => [$this->id, 'int'],
                     ':user_id' => [$_SESSION['user_id'], 'int'],
                 ],
@@ -455,14 +454,8 @@ final class Thread extends Entity
                         ($data['closed'] ? 'now' : null),
                         ($data['closed'] ? 'datetime' : 'null')
                     ],
-                    ':pinned' => [
-                        ($data['pinned']),
-                        ($data['pinned'] === null ? 'null' : 'bool')
-                    ],
-                    ':private' => [
-                        ($data['private']),
-                        ($data['private'] === null ? 'null' : 'bool')
-                    ],
+                    ':pinned' => [$data['pinned'], 'bool'],
+                    ':private' => [$data['private'], 'bool'],
                     ':time' => [
                         (empty($data['time']) ? 'now' : $data['time']),
                         'datetime'
@@ -670,11 +663,11 @@ final class Thread extends Entity
         $data['closed'] = Sanitization::checkboxToBoolean($data['closed']);
         $data['private'] = Sanitization::checkboxToBoolean($data['private']);
         if (!$edit && !in_array('post_private', $_SESSION['permissions'], true)) {
-            $data['private'] = null;
+            $data['private'] = false;
         }
         $data['pinned'] = Sanitization::checkboxToBoolean($data['pinned']);
         if (!in_array('can_pin', $_SESSION['permissions'], true)) {
-            $data['pinned'] = null;
+            $data['pinned'] = false;
         }
         $data['clear_og_image'] = Sanitization::checkboxToBoolean($data['clear_og_image']);
         $data['og_image'] = !(mb_strtolower($data['og_image'] ?? '', 'UTF-8') === 'false');
@@ -733,9 +726,10 @@ final class Thread extends Entity
         ) {
             return ['http_error' => 409, 'reason' => 'Thread `'.$data['name'].'` already exists in section.', 'location' => '/talks/threads/'.$thread_exists];
         }
-        #Enforce private flag and prevent time change for support threads
         if ($parent->type === 'Support') {
+            #Support threads need to be private by default
             $data['private'] = true;
+            #Prevent time change
             $data['time'] = null;
         }
         if ($edit) {
