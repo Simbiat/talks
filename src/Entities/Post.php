@@ -324,17 +324,6 @@ final class Post extends Entity
                     ':text' => $data['text'],
                 ], return: 'increment'
             );
-            #Update last post for thread
-            Query::query('UPDATE `talks__threads` SET `updated`=`updated`, `last_post`=:time, `posts`=`posts`+1, `last_poster`=:user_id WHERE `thread_id`=:thread_id;',
-                [
-                    ':time' => [
-                        (empty($data['time']) ? 'now' : $data['time']),
-                        'datetime'
-                    ],
-                    ':thread_id' => [$data['thread_id'], 'int'],
-                    ':user_id' => [$_SESSION['user_id'], 'int'],
-                ]
-            );
             #Refresh data
             $this->setId($new_id)->get();
             #Add text to history
@@ -343,6 +332,8 @@ final class Post extends Entity
             $this->attach([], $data['inline_files']);
             #Get the up-to-date data for the thread to get the last page for location
             $thread = new Thread($data['thread_id'])->get();
+            #Update last post for thread
+            $thread->updateStats();
             $new_location = '/talks/threads/'.$this->thread_id.($thread->last_page === 1 ? '' : '?page='.$thread->last_page);
             if (
                 $thread->type === 'Support' &&
@@ -364,7 +355,21 @@ final class Post extends Entity
                     (void)new NewPost()->save($subscriber, ['thread_name' => $thread->name, 'location' => $new_location]);
                 }
             }
-            if ($thread->author !== (int)$_SESSION['user_id'] && !in_array((int)$_SESSION['user_id'], $thread->subscribers, true)) {
+            if (
+                #Not anonymous
+                $thread->author !== (int)$_SESSION['user_id'] &&
+                #Not a subscriber already
+                !in_array((int)$_SESSION['user_id'], $thread->subscribers, true) &&
+                #Has no previous posts in the thread. If there are posts, but not a subscriber - means, that user unsubscribed before.
+                !Query::query(
+                    'SELECT `author` FROM `talks__posts` WHERE `thread_id`=:thread_id AND `author`=:user_id;',
+                    [
+                        ':thread_id' => [$data['thread_id'], 'int'],
+                        ':user_id' => [$_SESSION['user_id'], 'int'],
+                    ],
+                    return: 'check'
+                )
+            ) {
                 Query::query(
                     'INSERT INTO `subs__threads` (`thread_id`, `user_id`) VALUES (:thread_id,:user_id);',
                     [
