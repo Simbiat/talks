@@ -821,7 +821,7 @@ final class User extends Entity
                 #Check if it needs rehashing
                 if (\password_needs_rehash($hash, \PASSWORD_ARGON2ID, Config::$argon_settings)) {
                     #Rehash password and reset strikes (if any)
-                    $this->passChange($password);
+                    $this->passChange($password, true);
                 } else {
                     #Reset strikes (if any)
                     $this->resetStrikes();
@@ -848,11 +848,12 @@ final class User extends Entity
     /**
      * Function to change the password
      *
-     * @param string $password
+     * @param string $password Password to set
+     * @param bool   $refresh  Whether this is an automatic salt refresh
      *
      * @return bool
      */
-    public function passChange(#[\SensitiveParameter] string $password): bool
+    public function passChange(#[\SensitiveParameter] string $password, bool $refresh = false): bool
     {
         if ($this->id === null || $this->id === '') {
             return false;
@@ -871,7 +872,9 @@ final class User extends Entity
             Security::session_regenerate_id(true);
         }
         Security::log(LogTypes::PasswordChange->value, 'Attempted to change password', $result);
-        new PasswordChange()->save($this->id)->send();
+        if (!$refresh) {
+            new PasswordChange()->save($this->id)->send();
+        }
         return $result;
     }
     
