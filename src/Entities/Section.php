@@ -91,7 +91,7 @@ final class Section extends Entity
             ];
             #Get children
             if (!$this->for_thread) {
-                $data['children'] = new Sections(where: '`talks__sections`.`parent_id` IS NULL'.(in_array('view_scheduled', $_SESSION['permissions'], true) ? '' : ' AND `talks__sections`.`created`<=CURRENT_TIMESTAMP(6)'))->listEntities($page);
+                $data['children'] = new Sections(where: '`talks__sections`.`parent_id` IS NULL'.(in_array('view_scheduled', $_SESSION['permissions'], true) ? '' : ' AND `talks__sections`.`published`<=CURRENT_TIMESTAMP(6)'))->listEntities($page);
             }
         } else {
             $data = new Sections([':section_id' => [$this->id, 'int']], '`talks__sections`.`section_id`=:section_id')->listEntities();
@@ -138,7 +138,7 @@ final class Section extends Entity
             $where = '';
             $bindings = [':section_id' => [$this->id, 'int']];
             if (!in_array('view_scheduled', $_SESSION['permissions'], true)) {
-                $where .= ' AND `talks__sections`.`created`<=CURRENT_TIMESTAMP(6)';
+                $where .= ' AND `talks__sections`.`published`<=CURRENT_TIMESTAMP(6)';
             }
             if (!in_array('view_private', $_SESSION['permissions'], true)) {
                 $where .= ' AND (`talks__sections`.`private`=0 OR `talks__sections`.`author`=:user_id)';
@@ -154,7 +154,7 @@ final class Section extends Entity
             } else {
                 #If we have a blog or changelog - order by creation date, if we have a forum or support - by update date, if a knowledgebase - by name
                 $order_by = match ($data['detailed_type']) {
-                    'Blog', 'Changelog' => '`created` DESC, `last_post` DESC, `name` ASC',
+                    'Blog', 'Changelog' => '`published` DESC, `last_post` DESC, `name` ASC',
                     'Forum' => '`last_post` DESC, `name` ASC',
                     'Support' => '`talks__threads`.`closed` IS NOT NULL, `talks__threads`.`closed` DESC, `last_post` DESC, `name` ASC',
                     'Knowledgebase' => '`name` ASC',
@@ -168,7 +168,7 @@ final class Section extends Entity
                     $bindings[':anonymous'] = [SystemUsers::Unknown->value, 'int'];
                 }
                 if (!in_array('view_scheduled', $_SESSION['permissions'], true)) {
-                    $where .= ' AND `talks__threads`.`created`<=CURRENT_TIMESTAMP(6)';
+                    $where .= ' AND `talks__threads`.`published`<=CURRENT_TIMESTAMP(6)';
                 }
                 if (!in_array('view_private', $_SESSION['permissions'], true)) {
                     $where .= ' AND (`talks__threads`.`private`=0 OR `talks__threads`.`author`=:user_id)';
@@ -185,7 +185,7 @@ final class Section extends Entity
                 $where = '';
                 $bindings = [];
                 if (!in_array('view_scheduled', $_SESSION['permissions'], true)) {
-                    $where .= '`t`.`created`<=CURRENT_TIMESTAMP(6) AND ';
+                    $where .= '`t`.`published`<=CURRENT_TIMESTAMP(6) AND ';
                 }
                 if (!in_array('view_private', $_SESSION['permissions'], true)) {
                     $where .= '(`t`.`private`=0 OR `t`.`author`=:user_id) AND ';
@@ -223,7 +223,7 @@ final class Section extends Entity
             #Count posts
             if (!empty($data['threads']['entities'])) {
                 foreach ($data['threads']['entities'] as &$thread) {
-                    $thread['posts'] = Query::query('SELECT COUNT(*) AS `count` FROM `talks__posts` WHERE `thread_id`=:thread_id'.(in_array('view_scheduled', $_SESSION['permissions'], true) ? '' : ' AND `talks__posts`.`created`<=CURRENT_TIMESTAMP(6)').';', [':thread_id' => [$thread['id'], 'int']], return: 'count');
+                    $thread['posts'] = Query::query('SELECT COUNT(*) AS `count` FROM `talks__posts` WHERE `thread_id`=:thread_id'.(in_array('view_scheduled', $_SESSION['permissions'], true) ? '' : ' AND `talks__posts`.`published`<=CURRENT_TIMESTAMP(6)').';', [':thread_id' => [$thread['id'], 'int']], return: 'count');
                 }
             }
         }
@@ -361,6 +361,7 @@ final class Section extends Entity
                 $this->private = $private;
                 $this->notifyAboutChange($private ? 'private' : 'public');
             }
+            //TODO need to mark all children as private as well
             return ['response' => true];
         } catch (\Throwable) {
             return ['response' => false];
@@ -452,7 +453,7 @@ final class Section extends Entity
         }
         try {
             $new_id = Query::query(
-                'INSERT INTO `talks__sections`(`section_id`, `name`, `description`, `parent_id`, `sequence`, `type`, `closed`, `private`, `created`, `author`, `editor`, `icon`) VALUES (NULL,:name,:description,:parent_id,:sequence,:type,:closed,:private,:time,:user_id,:user_id,:icon);',
+                'INSERT INTO `talks__sections`(`section_id`, `name`, `description`, `parent_id`, `sequence`, `type`, `closed`, `private`, `published`, `author`, `editor`, `icon`) VALUES (NULL,:name,:description,:parent_id,:sequence,:type,:closed,:private,:time,:user_id,:user_id,:icon);',
                 [
                     ':name' => mb_trim($data['name'], null, 'UTF-8'),
                     ':description' => mb_trim($data['description'], null, 'UTF-8'),

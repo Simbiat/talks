@@ -28,7 +28,6 @@ final class Post extends Entity
     public bool $system = true;
     public bool $private = false;
     public bool $locked = false;
-    public ?int $closed = null;
     public bool $owned = false;
     public ?int $created = null;
     public int $author = 1;
@@ -37,7 +36,7 @@ final class Post extends Entity
     public int $editor = 1;
     public string $editor_name = 'Deleted user';
     public ?int $thread_id = null;
-    public int $thread_author = 1;
+    public ?int $thread_author = 1;
     public array $reply_to = [];
     public string $text = '';
     public string $avatar = '/assets/images/avatar.svg';
@@ -98,9 +97,8 @@ final class Post extends Entity
         $this->thread_id = $from_db['thread_id'];
         $this->thread_author = $from_db['thread']['author'];
         $this->system = (bool)$from_db['system'];
-        $this->private = (bool)$from_db['thread']['private'];
+        $this->private = (bool)$from_db['private'];
         $this->locked = (bool)$from_db['locked'];
-        $this->closed = $from_db['thread']['closed'] ?? null;
         $this->created = $from_db['created'] !== null ? \strtotime($from_db['created']) : null;
         $this->author = $from_db['author'] ?? SystemUsers::Deleted->value;
         $this->owned = ($this->author === $_SESSION['user_id']);
@@ -129,7 +127,7 @@ final class Post extends Entity
         $posts = [];
         try {
             #Regular list does not fit due to pagination and due to excessive data, so using a custom query to get all posts
-            $posts = Query::query('SELECT `post_id` FROM `talks__posts` WHERE `thread_id`=:thread_id'.(in_array('view_scheduled', $_SESSION['permissions'], true) ? '' : ' AND `created`<=CURRENT_TIMESTAMP(6)').' ORDER BY `created`;', [':thread_id' => [$thread, 'int']], return: 'column');
+            $posts = Query::query('SELECT `post_id` FROM `talks__posts` WHERE `thread_id`=:thread_id'.(in_array('view_scheduled', $_SESSION['permissions'], true) ? '' : ' AND `published`<=CURRENT_TIMESTAMP(6)').' ORDER BY `published`;', [':thread_id' => [$thread, 'int']], return: 'column');
         } catch (\Throwable) {
             #Do nothing
         }
@@ -309,7 +307,7 @@ final class Post extends Entity
         try {
             #Create the post itself
             $new_id = Query::query(
-                'INSERT INTO `talks__posts`(`post_id`, `thread_id`, `reply_to`, `created`, `updated`, `author`, `editor`, `text`) VALUES (NULL,:thread_id,:reply_to,:time,:time,:user_id,:user_id,:text);',
+                'INSERT INTO `talks__posts`(`post_id`, `thread_id`, `reply_to`, `published`, `updated`, `author`, `editor`, `text`) VALUES (NULL,:thread_id,:reply_to,:time,:time,:user_id,:user_id,:text);',
                 [
                     ':thread_id' => [$data['thread_id'], 'int'],
                     ':reply_to' => [
@@ -537,7 +535,7 @@ final class Post extends Entity
             $queries = [];
             #Update text
             $queries[] = [
-                'UPDATE `talks__posts` SET `editor`=:user_id,`text`=:text, `updated`=GREATEST(`created`, `updated`) WHERE `post_id`=:post_id;',
+                'UPDATE `talks__posts` SET `editor`=:user_id,`text`=:text, `updated`=GREATEST(`published`, `updated`) WHERE `post_id`=:post_id;',
                 [
                     ':post_id' => [$this->id, 'int'],
                     ':user_id' => [$_SESSION['user_id'], 'int'],
@@ -616,15 +614,13 @@ final class Post extends Entity
         $parent = new Thread($data['thread_id'])->setForPost(true)->get();
         $this->type = $parent->type;
         $this->access_token = $parent->access_token;
-        $this->private = $parent->private;
-        $this->thread_author = $parent->author;
         if (
             #If we are in Support section
             $this->type === 'Support' &&
             #Posting in a thread created by unknown user (through Contact Form)
-            $this->thread_author === SystemUsers::Unknown->value &&
+            $parent->author === SystemUsers::Unknown->value &&
             #And we are an unknown user ourselves
-            $this->thread_author === $_SESSION['user_id'] &&
+            $parent->author === $_SESSION['user_id'] &&
             #And thread has an empty access token or our access token does not equal the thread's token
             ($this->access_token === null || $this->access_token === '' || $this->access_token !== ($_GET['access_token'] ?? '')) &&
             #And we are also lacking `can_post` permission (so most likely posting in the thread directly)

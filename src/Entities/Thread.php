@@ -99,7 +99,7 @@ final class Thread extends Entity
             #Get pagination data
             try {
                 #Regular list does not fit due to pagination and due to excessive data, so using a custom query to get all posts
-                $data['posts']['pages'] = Query::query('SELECT COUNT(*) AS `count` FROM `talks__posts` WHERE `thread_id`=:thread_id'.(in_array('view_scheduled', $_SESSION['permissions'], true) ? '' : ' AND `created`<=CURRENT_TIMESTAMP(6)').';', [':thread_id' => [$this->id, 'int']], return: 'count');
+                $data['posts']['pages'] = Query::query('SELECT COUNT(*) AS `count` FROM `talks__posts` WHERE `thread_id`=:thread_id'.(in_array('view_scheduled', $_SESSION['permissions'], true) ? '' : ' AND `published`<=CURRENT_TIMESTAMP(6)').';', [':thread_id' => [$this->id, 'int']], return: 'count');
             } catch (\Throwable) {
                 $data['posts']['pages'] = 1;
             }
@@ -107,7 +107,7 @@ final class Thread extends Entity
             #Get subscribers
             $data['subscribers'] = Query::query('SELECT `user_id` FROM `subs__threads` WHERE `thread_id`=:thread_id;', [':thread_id' => [$this->id, 'int']], return: 'column');
             #Get posts
-            $data['posts'] = new Posts([':thread_id' => [$this->id, 'int'], ':user_id' => [$_SESSION['user_id'], 'int']], '`talks__posts`.`thread_id`=:thread_id'.(in_array('view_scheduled', $_SESSION['permissions'], true) ? '' : ' AND `talks__posts`.`created`<=CURRENT_TIMESTAMP(6)'), '`talks__posts`.`created` ASC')->listEntities($page);
+            $data['posts'] = new Posts([':thread_id' => [$this->id, 'int'], ':user_id' => [$_SESSION['user_id'], 'int']], '`talks__posts`.`thread_id`=:thread_id'.(in_array('view_scheduled', $_SESSION['permissions'], true) ? '' : ' AND `talks__posts`.`published`<=CURRENT_TIMESTAMP(6)'), '`talks__posts`.`published` ASC')->listEntities($page);
             /** @noinspection OffsetOperationsInspection https://github.com/kalessil/phpinspectionsea/issues/1941 */
             if (is_array($data['posts']) && is_array($data['posts']['entities'])) {
                 /** @noinspection OffsetOperationsInspection https://github.com/kalessil/phpinspectionsea/issues/1941 */
@@ -445,7 +445,7 @@ final class Thread extends Entity
         }
         try {
             $new_id = Query::query(
-                'INSERT INTO `talks__threads`(`thread_id`, `name`, `section_id`, `language`, `pinned`, `closed`, `private`, `og_image`, `created`, `author`, `editor`, `last_poster`) VALUES (NULL, :name, :parent_id, :language, COALESCE(:pinned, DEFAULT(`pinned`)), COALESCE(:closed, DEFAULT(`closed`)), COALESCE(:private, DEFAULT(`private`)), :og_image, :time,:user_id,:user_id,:user_id);',
+                'INSERT INTO `talks__threads`(`thread_id`, `name`, `section_id`, `language`, `pinned`, `closed`, `private`, `og_image`, `published`, `author`, `editor`, `last_poster`) VALUES (NULL, :name, :parent_id, :language, COALESCE(:pinned, DEFAULT(`pinned`)), COALESCE(:closed, DEFAULT(`closed`)), COALESCE(:private, DEFAULT(`private`)), :og_image, :time,:user_id,:user_id,:user_id);',
                 [
                     ':name' => mb_trim($data['name'], null, 'UTF-8'),
                     ':parent_id' => [$data['parent_id'], 'int'],
@@ -535,12 +535,12 @@ final class Thread extends Entity
         Query::query(
             'UPDATE `talks__threads` AS `threads`
                     LEFT JOIN (
-                        SELECT `thread_id`, COUNT(*) OVER () AS `count`, `created`, `author` FROM `talks__posts` WHERE `thread_id`=:thread_id ORDER BY `created` DESC LIMIT 1
+                        SELECT `thread_id`, COUNT(*) OVER () AS `count`, `published`, `author` FROM `talks__posts` WHERE `thread_id`=:thread_id ORDER BY `published` DESC LIMIT 1
                     ) AS `posts` ON `threads`.`thread_id` = `posts`.`thread_id`
                     SET
                         `updated`=`updated`,
                         `threads`.`posts` = `posts`.`count`,
-                        `threads`.`last_post` = COALESCE(`posts`.`created`, `threads`.`created`),
+                        `threads`.`last_post` = COALESCE(`posts`.`published`, `threads`.`published`),
                         `threads`.`last_poster` = COALESCE(`posts`.`author`, `threads`.`author`)
                     WHERE `threads`.`thread_id` = :thread_id;',
             [':thread_id' => [$this->id, 'int']]

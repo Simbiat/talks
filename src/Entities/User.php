@@ -963,13 +963,13 @@ final class User extends Entity
         $where = '`talks__threads`.`author`=:user_id';
         $bindings = [':user_id' => [$this->id, 'int'],];
         if (!in_array('view_scheduled', $_SESSION['permissions'], true)) {
-            $where .= ' AND `talks__threads`.`created`<=CURRENT_TIMESTAMP(6)';
+            $where .= ' AND `talks__threads`.`published`<=CURRENT_TIMESTAMP(6)';
         }
         if (!in_array('view_private', $_SESSION['permissions'], true)) {
             $where .= ' AND (`talks__threads`.`private`=0 OR `talks__threads`.`author`=:author)';
             $bindings[':author'] = [$_SESSION['user_id'], 'int'];
         }
-        $threads = new Threads($bindings, $where, '`talks__threads`.`created` DESC')->listEntities();
+        $threads = new Threads($bindings, $where, '`talks__threads`.`published` DESC')->listEntities();
         #Clean any threads with empty `first_post` (means the thread is either empty or is in progress of creation)
         /** @noinspection OffsetOperationsInspection https://github.com/kalessil/phpinspectionsea/issues/1941 */
         if (is_array($threads) && is_array($threads['entities'])) {
@@ -998,12 +998,12 @@ final class User extends Entity
         $where = '`talks__posts`.`author`=:author';
         $bindings = [':author' => [$this->id, 'int'], ':user_id' => [$_SESSION['user_id'], 'int'],];
         if (!$this->id !== $_SESSION['user_id'] && !in_array('view_scheduled', $_SESSION['permissions'], true)) {
-            $where .= ' AND `talks__posts`.`created`<=CURRENT_TIMESTAMP(6)';
+            $where .= ' AND `talks__posts`.`published`<=CURRENT_TIMESTAMP(6)';
         }
         if (!$this->id !== $_SESSION['user_id'] && !in_array('view_private', $_SESSION['permissions'], true)) {
             $where .= ' AND `talks__threads`.`private`=0';
         }
-        $posts = new Posts($bindings, $where, '`talks__posts`.`created` DESC')->listEntities();
+        $posts = new Posts($bindings, $where, '`talks__posts`.`published` DESC')->listEntities();
         /** @noinspection OffsetOperationsInspection https://github.com/kalessil/phpinspectionsea/issues/1941 */
         if (!is_array($posts) || !is_array($posts['entities'])) {
             return [];
@@ -1054,14 +1054,14 @@ final class User extends Entity
         $where = '';
         $bindings = [':user_id' => [$_SESSION['user_id'], 'int']];
         if (!in_array('view_scheduled', $_SESSION['permissions'], true)) {
-            $where .= ' AND `talks__posts`.`created`<=CURRENT_TIMESTAMP(6)';
+            $where .= ' AND `talks__posts`.`published`<=CURRENT_TIMESTAMP(6)';
         }
         if (!in_array('view_private', $_SESSION['permissions'], true)) {
             $where .= ' AND (`talks__threads`.`private`=0 OR `talks__threads`.`author`=:author)';
             $bindings[':author'] = [$_SESSION['user_id'], 'int'];
         }
         $bindings[':postIDs'] = [$ids, 'in', 'int'];
-        $posts = new Posts($bindings, '`talks__posts`.`post_id` IN (:postIDs)'.$where, '`talks__posts`.`created` DESC')->listEntities();
+        $posts = new Posts($bindings, '`talks__posts`.`post_id` IN (:postIDs)'.$where, '`talks__posts`.`published` DESC')->listEntities();
         /** @noinspection OffsetOperationsInspection https://github.com/kalessil/phpinspectionsea/issues/1941 */
         if (is_array($posts) && is_array($posts['entities'])) {
             #Get like value for each post if the current user has appropriate permission
