@@ -30,6 +30,7 @@ final class Post extends Entity
     public bool $locked = false;
     public bool $owned = false;
     public ?int $created = null;
+    public ?int $published = null;
     public int $author = 1;
     public string $author_name = 'Deleted user';
     public ?int $updated = null;
@@ -97,9 +98,10 @@ final class Post extends Entity
         $this->thread_id = $from_db['thread_id'];
         $this->thread_author = $from_db['thread']['author'];
         $this->system = (bool)$from_db['system'];
-        $this->private = (bool)$from_db['private'];
+        $this->private = (bool)$from_db['thread']['private'];
         $this->locked = (bool)$from_db['locked'];
         $this->created = $from_db['created'] !== null ? \strtotime($from_db['created']) : null;
+        $this->published = $from_db['published'] !== null ? \strtotime($from_db['published']) : null;
         $this->author = $from_db['author'] ?? SystemUsers::Deleted->value;
         $this->owned = ($this->author === $_SESSION['user_id']);
         $this->author_name = $from_db['author_name'] ?? 'Deleted user';

@@ -30,6 +30,7 @@ final class Section extends Entity
     public bool $private = false;
     public ?int $closed = null;
     public ?int $created = null;
+    public ?int $published = null;
     public int $author = 1;
     public ?int $updated = null;
     public int $editor = 1;
@@ -247,6 +248,7 @@ final class Section extends Entity
         $this->owned = $from_db['owned'];
         $this->closed = $from_db['closed'] !== null ? \strtotime($from_db['closed']) : null;
         $this->created = $from_db['created'] !== null ? \strtotime($from_db['created']) : null;
+        $this->published = $from_db['published'] !== null ? \strtotime($from_db['published']) : null;
         $this->author = $from_db['author'] ?? SystemUsers::Deleted->value;
         $this->updated = $from_db['updated'] !== null ? \strtotime($from_db['updated']) : null;
         $this->editor = $from_db['editor'] ?? SystemUsers::Deleted->value;

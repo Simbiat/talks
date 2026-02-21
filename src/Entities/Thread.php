@@ -35,6 +35,7 @@ final class Thread extends Entity
     public ?int $closed = null;
     public bool $owned = false;
     public ?int $created = null;
+    public ?int $published = null;
     public int $author = 1;
     public ?int $updated = null;
     public int $editor = 1;
@@ -142,6 +143,7 @@ final class Thread extends Entity
         $this->last_poster = $from_db['last_poster'] ?? SystemUsers::Deleted->value;
         $this->closed = $from_db['closed'] !== null ? \strtotime($from_db['closed']) : null;
         $this->created = $from_db['created'] !== null ? \strtotime($from_db['created']) : null;
+        $this->published = $from_db['published'] !== null ? \strtotime($from_db['published']) : null;
         $this->author = $from_db['author'] ?? SystemUsers::Deleted->value;
         $this->owned = ($this->author === $_SESSION['user_id']);
         $this->updated = $from_db['updated'] !== null ? \strtotime($from_db['updated']) : null;
