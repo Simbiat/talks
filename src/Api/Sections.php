@@ -12,7 +12,7 @@ class Sections extends Api
     #Flag to indicate, that this is the lowest level
     protected bool $final_node = true;
     #Allowed methods (besides GET, HEAD and OPTIONS) with optional mapping to GET functions
-    protected array $methods = ['POST' => 'add', 'DELETE' => 'delete', 'PATCH' => ['edit', 'move', 'close', 'open', 'mark_private', 'mark_public']];
+    protected array $methods = ['POST' => ['add', 'edit'], 'DELETE' => 'delete', 'PATCH' => ['move', 'close', 'open', 'mark_private', 'mark_public']];
     #Allowed verbs, that can be added after an ID as an alternative to HTTP Methods or to get alternative representation
     protected array $verbs = ['add' => 'Add section', 'delete' => 'Delete section', 'edit' => 'Edit section', 'move' => 'Move section to another subsection', 'close' => 'Close section', 'open' => 'Open section',
         'mark_private' => 'Mark the section as private', 'mark_public' => 'Mark the section as public',

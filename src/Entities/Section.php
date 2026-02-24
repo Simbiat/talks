@@ -82,6 +82,7 @@ final class Section extends Entity
                 'private' => false,
                 'closed' => 'now',
                 'created' => null,
+                'published' => null,
                 'author' => SystemUsers::System->value,
                 'updated' => null,
                 'editor' => SystemUsers::System->value,
